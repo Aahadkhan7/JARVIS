@@ -1,0 +1,44 @@
+[
+    {
+        "title": "JavaScript Study",
+        "date": "Friday",
+        "time": "6 PM",
+        "description": ""
+    },
+    {
+        "title": "JavaScript Study",
+        "date": "Friday",
+        "time": "6 PM",
+        "description": ""
+    },
+    {
+        "title": "JavaScript Practice",
+        "date": "2026-09-14",
+        "time": "18:00",
+        "description": ""
+    },
+    {
+        "title": "JS Fundamentals Review",
+        "date": "2026-09-13",
+        "time": "19:00",
+        "description": "Review core concepts: variables, functions, scopes, and ES6 features."
+    },
+    {
+        "title": "JavaScript study",
+        "date": "2026-09-15",
+        "time": "23:59",
+        "description": ""
+    },
+    {
+        "title": "JavaScript study",
+        "date": "2026-09-15",
+        "time": "10:00 AM",
+        "description": ""
+    },
+    {
+        "title": "JavaScript study",
+        "date": "2026-09-15",
+        "time": "05:00",
+        "description": ""
+    }
+]

@@ -1,0 +1,10 @@
+venv/
+.env
+
+__pycache__/
+*.pyc
+
+data/memory.db
+data/chroma_db/
+
+data/*.wav
