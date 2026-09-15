@@ -1,6 +1,9 @@
 from datetime import datetime
 import json
+import os
 from pathlib import Path
+import subprocess
+import webbrowser
 
 import requests
 from langchain_core.tools import tool
@@ -10,7 +13,19 @@ from .memory import store_fact, search_facts
 
 TASKS_FILE = Path(__file__).parent.parent / "data" / "tasks.json"
 CALENDAR_FILE = Path(__file__).parent.parent / "data" / "calendar.json"
+PROJECT_DIR = Path(__file__).parent.parent
 
+IGNORED_FOLDERS = {
+    "venv",
+    ".git",
+    "__pycache__",
+    "chroma_db",
+}
+
+
+# =========================
+# TIME
+# =========================
 
 @tool
 def get_current_time() -> str:
@@ -22,6 +37,10 @@ def get_current_time() -> str:
         "%A, %B %d, %Y — %I:%M:%S %p"
     )
 
+
+# =========================
+# CALCULATOR
+# =========================
 
 @tool
 def calculate(expression: str) -> str:
@@ -44,6 +63,10 @@ def calculate(expression: str) -> str:
             f"Reason: {error}"
         )
 
+
+# =========================
+# WEATHER
+# =========================
 
 @tool
 def get_weather(city: str) -> str:
@@ -68,9 +91,9 @@ def get_weather(city: str) -> str:
         feels_like = current["FeelsLikeC"]
         humidity = current["humidity"]
 
-        description = (
-            current["weatherDesc"][0]["value"]
-        )
+        description = current[
+            "weatherDesc"
+        ][0]["value"]
 
         return (
             f"Weather in {city}: {description}. "
@@ -86,6 +109,10 @@ def get_weather(city: str) -> str:
             f"for {city}. Reason: {error}"
         )
 
+
+# =========================
+# MEMORY
+# =========================
 
 @tool
 def remember_fact(fact: str) -> str:
@@ -115,9 +142,7 @@ def recall_memory(query: str) -> str:
 
         if not results:
 
-            return (
-                "I don't have any matching memories."
-            )
+            return "I don't have any matching memories."
 
         return "\n".join(results)
 
@@ -129,10 +154,13 @@ def recall_memory(query: str) -> str:
         )
 
 
+# =========================
+# TASKS
+# =========================
+
 def load_tasks():
 
     if not TASKS_FILE.exists():
-
         return []
 
     with open(
@@ -178,7 +206,8 @@ def create_task(
         if not title:
 
             return (
-                "TOOL_ERROR: Task title cannot be empty."
+                "TOOL_ERROR: Task title "
+                "cannot be empty."
             )
 
         tasks = load_tasks()
@@ -214,6 +243,7 @@ def create_task(
             f"Reason: {error}"
         )
 
+
 @tool
 def get_tasks(
     status: str = "all"
@@ -232,7 +262,6 @@ def get_tasks(
         tasks = load_tasks()
 
         if not tasks:
-
             return "No tasks found."
 
         status = status.lower().strip()
@@ -303,38 +332,41 @@ def update_task(
     new_title: str = "",
     due_date: str = ""
 ) -> str:
-    """
-    Update an existing task.
-
-    Can update the task title and/or due date.
-    """
+    """Update an existing task."""
 
     try:
 
         tasks = load_tasks()
 
         if not tasks:
-
             return "No tasks found."
 
         for task in tasks:
 
-            if task["title"].lower() == title.lower():
+            if (
+                task["title"].lower()
+                == title.lower()
+            ):
 
                 old_title = task["title"]
 
                 if new_title.strip():
 
-                    task["title"] = new_title.strip()
+                    task["title"] = (
+                        new_title.strip()
+                    )
 
                 if due_date.strip():
 
-                    task["due_date"] = due_date.strip()
+                    task["due_date"] = (
+                        due_date.strip()
+                    )
 
                 save_tasks(tasks)
 
                 return (
-                    f"Task updated: {old_title} -> "
+                    f"Task updated: "
+                    f"{old_title} -> "
                     f"{task['title']} — Due: "
                     f"{task['due_date'] or 'Not set'}"
                 )
@@ -350,7 +382,9 @@ def update_task(
 
 
 @tool
-def complete_task(title: str) -> str:
+def complete_task(
+    title: str
+) -> str:
     """Mark a task as completed."""
 
     try:
@@ -358,24 +392,29 @@ def complete_task(title: str) -> str:
         tasks = load_tasks()
 
         if not tasks:
-
             return "No tasks found."
 
         for task in tasks:
 
-            if task["title"].lower() == title.lower():
+            if (
+                task["title"].lower()
+                == title.lower()
+            ):
 
                 if task["completed"]:
 
                     return (
-                        f"Task already completed: {title}"
+                        f"Task already completed: "
+                        f"{title}"
                     )
 
                 task["completed"] = True
 
                 save_tasks(tasks)
 
-                return f"Task completed: {title}"
+                return (
+                    f"Task completed: {title}"
+                )
 
         return f"Task not found: {title}"
 
@@ -387,12 +426,15 @@ def complete_task(title: str) -> str:
         )
 
 
+# =========================
+# CALENDAR
+# =========================
+
 def load_calendar():
 
     try:
 
         if not CALENDAR_FILE.exists():
-
             return []
 
         with open(
@@ -439,7 +481,6 @@ def get_calendar(
         events = load_calendar()
 
         if not events:
-
             return "No calendar events found."
 
         if date:
@@ -454,7 +495,8 @@ def get_calendar(
         if not events:
 
             return (
-                f"No calendar events found for {date}."
+                f"No calendar events found "
+                f"for {date}."
             )
 
         result = []
@@ -528,10 +570,656 @@ def create_calendar_event(
     except Exception as error:
 
         return (
-            f"TOOL_ERROR: Calendar event creation "
-            f"failed. Reason: {error}"
+            f"TOOL_ERROR: Calendar event "
+            f"creation failed. "
+            f"Reason: {error}"
         )
 
+
+# =========================
+# DESKTOP TOOLS
+# =========================
+
+@tool
+def open_website(
+    url: str
+) -> str:
+    """Open a website in the default web browser."""
+
+    try:
+
+        url = url.strip()
+
+        if not url.startswith(
+            ("http://", "https://")
+        ):
+
+            return (
+                "TOOL_ERROR: Website URL must "
+                "start with http:// or https://."
+            )
+
+        webbrowser.open(url)
+
+        return (
+            f"Website opened: {url}"
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not open "
+            f"website. Reason: {error}"
+        )
+
+
+@tool
+def open_application(
+    application: str
+) -> str:
+    """
+    Open a safe predefined Windows application.
+
+    Supported applications:
+    notepad
+    calculator
+    vscode
+    """
+
+    try:
+
+        application = (
+            application
+            .lower()
+            .strip()
+        )
+
+        applications = {
+            "notepad": ["notepad.exe"],
+            "calculator": ["calc.exe"],
+            "vscode": ["code"],
+        }
+
+        command = applications.get(
+            application
+        )
+
+        if command is None:
+
+            return (
+                "TOOL_ERROR: Application "
+                "not supported. "
+                "Supported: notepad, calculator, vscode."
+            )
+
+        subprocess.Popen(
+            command,
+            shell=False
+        )
+
+        return (
+            f"Application opened: "
+            f"{application}"
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not open "
+            f"application. Reason: {error}"
+        )
+
+
+@tool
+def open_jarvis_folder() -> str:
+    """Open the JARVIS project folder in Windows Explorer."""
+
+    try:
+
+        folder = PROJECT_DIR
+
+        os.startfile(folder)
+
+        return (
+            "JARVIS project folder opened."
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not open "
+            f"JARVIS folder. Reason: {error}"
+        )
+
+
+# =========================
+# FILE ASSISTANT
+# =========================
+
+def is_ignored_path(path: Path) -> bool:
+    """Check whether a path contains an ignored folder."""
+
+    return any(
+        part in IGNORED_FOLDERS
+        for part in path.parts
+    )
+
+
+def find_project_files(filename: str):
+    """Find matching files while ignoring system/cache folders."""
+
+    matches = []
+
+    for item in PROJECT_DIR.rglob("*"):
+
+        if is_ignored_path(item):
+            continue
+
+        if not item.is_file():
+            continue
+
+        if item.name.lower() == filename.lower():
+
+            matches.append(item)
+
+    return matches
+
+
+@tool
+def list_files(
+    folder: str = ""
+) -> str:
+    """
+    List files and folders inside a directory.
+
+    If no folder is provided, use the JARVIS project folder.
+    """
+
+    try:
+
+        if folder.strip():
+
+            target = Path(
+                folder
+            ).expanduser()
+
+        else:
+
+            target = PROJECT_DIR
+
+        if not target.exists():
+
+            return (
+                f"TOOL_ERROR: Folder not found: "
+                f"{target}"
+            )
+
+        if not target.is_dir():
+
+            return (
+                f"TOOL_ERROR: Not a folder: "
+                f"{target}"
+            )
+
+        items = sorted(
+            target.iterdir(),
+            key=lambda item: (
+                not item.is_dir(),
+                item.name.lower()
+            )
+        )
+
+        result = []
+
+        for item in items:
+
+            if item.name in IGNORED_FOLDERS:
+
+                continue
+
+            item_type = (
+                "[FOLDER]"
+                if item.is_dir()
+                else "[FILE]"
+            )
+
+            result.append(
+                f"{item_type} {item.name}"
+            )
+
+        if not result:
+
+            return (
+                f"Folder is empty: {target}"
+            )
+
+        return (
+            f"Contents of {target}:\n"
+            + "\n".join(result)
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not list files. "
+            f"Reason: {error}"
+        )
+
+
+@tool
+def search_files(
+    filename: str,
+    folder: str = ""
+) -> str:
+    """
+    Search for files or folders by name.
+
+    Searches recursively while ignoring:
+    venv
+    .git
+    __pycache__
+    chroma_db
+    """
+
+    try:
+
+        filename = filename.strip()
+
+        if not filename:
+
+            return (
+                "TOOL_ERROR: Filename cannot be empty."
+            )
+
+        if folder.strip():
+
+            target = Path(
+                folder
+            ).expanduser()
+
+        else:
+
+            target = PROJECT_DIR
+
+        if not target.exists():
+
+            return (
+                f"TOOL_ERROR: Folder not found: "
+                f"{target}"
+            )
+
+        if not target.is_dir():
+
+            return (
+                f"TOOL_ERROR: Not a folder: "
+                f"{target}"
+            )
+
+        matches = []
+
+        for item in target.rglob("*"):
+
+            if is_ignored_path(item):
+                continue
+
+            if filename.lower() in item.name.lower():
+
+                matches.append(
+                    str(item)
+                )
+
+        if not matches:
+
+            return (
+                f"No files or folders found "
+                f"matching '{filename}'."
+            )
+
+        return (
+            f"Search results for '{filename}':\n"
+            + "\n".join(matches[:50])
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: File search failed. "
+            f"Reason: {error}"
+        )
+
+
+@tool
+def open_file(
+    file_path: str
+) -> str:
+    """
+    Safely open a file.
+
+    If multiple files have the same filename,
+    return the matching options instead of choosing one.
+    """
+
+    try:
+
+        file_path = file_path.strip()
+
+        if not file_path:
+
+            return (
+                "TOOL_ERROR: File path cannot be empty."
+            )
+
+        target = Path(
+            file_path
+        ).expanduser()
+
+        if target.exists():
+
+            if not target.is_file():
+
+                return (
+                    f"TOOL_ERROR: Not a file: "
+                    f"{target}"
+                )
+
+        else:
+
+            matches = find_project_files(
+                target.name
+            )
+
+            if not matches:
+
+                return (
+                    f"TOOL_ERROR: File not found: "
+                    f"{file_path}"
+                )
+
+            if len(matches) > 1:
+
+                result = [
+                    "AMBIGUOUS_FILE: Multiple files found. "
+                    "Please choose one:"
+                ]
+
+                for index, match in enumerate(
+                    matches,
+                    start=1
+                ):
+
+                    result.append(
+                        f"{index}. {match}"
+                    )
+
+                return "\n".join(result)
+
+            target = matches[0]
+
+        if not target.is_file():
+
+            return (
+                f"TOOL_ERROR: Not a file: "
+                f"{target}"
+            )
+
+        os.startfile(target)
+
+        return (
+            f"File opened: {target}"
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not open file. "
+            f"Reason: {error}"
+        )
+
+
+# =========================
+# READ FILE CONTENT
+# =========================
+
+@tool
+def read_file(
+    file_path: str
+) -> str:
+    """
+    Read the text content of a file.
+
+    If multiple files have the same filename,
+    return the matching options instead of choosing one.
+    """
+
+    try:
+
+        file_path = file_path.strip()
+
+        if not file_path:
+
+            return (
+                "TOOL_ERROR: File path cannot be empty."
+            )
+
+        target = Path(
+            file_path
+        ).expanduser()
+
+        if target.exists():
+
+            if not target.is_file():
+
+                return (
+                    f"TOOL_ERROR: Not a file: "
+                    f"{target}"
+                )
+
+        else:
+
+            matches = find_project_files(
+                target.name
+            )
+
+            if not matches:
+
+                return (
+                    f"TOOL_ERROR: File not found: "
+                    f"{file_path}"
+                )
+
+            if len(matches) > 1:
+
+                result = [
+                    "AMBIGUOUS_FILE: Multiple files found. "
+                    "Please choose one:"
+                ]
+
+                for index, match in enumerate(
+                    matches,
+                    start=1
+                ):
+
+                    result.append(
+                        f"{index}. {match}"
+                    )
+
+                return "\n".join(result)
+
+            target = matches[0]
+
+        try:
+
+            content = target.read_text(
+                encoding="utf-8"
+            )
+
+        except UnicodeDecodeError:
+
+            return (
+                "TOOL_ERROR: This file is not "
+                "a readable UTF-8 text file."
+            )
+
+        if not content.strip():
+
+            return (
+                f"File is empty: {target}"
+            )
+
+        max_chars = 12000
+
+        if len(content) > max_chars:
+
+            content = content[:max_chars]
+
+            content += (
+                "\n\n[File content truncated "
+                "after 12000 characters.]"
+            )
+
+        return (
+            f"FILE_CONTENT: {target}\n\n"
+            f"{content}"
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not read file. "
+            f"Reason: {error}"
+        )
+
+
+# =========================
+# EDIT FILE
+# =========================
+
+
+@tool
+def edit_file(
+    file_path: str,
+    old_text: str,
+    new_text: str,
+    replace_all: bool = False
+) -> str:
+    """
+    Request a safe file edit.
+
+    The file is NOT changed by this tool.
+    It prepares a confirmation request first.
+    """
+
+    try:
+
+        file_path = file_path.strip()
+
+        if not file_path:
+
+            return (
+                "TOOL_ERROR: File path cannot be empty."
+            )
+
+        target = Path(
+            file_path
+        ).expanduser()
+
+        if target.exists():
+
+            if not target.is_file():
+
+                return (
+                    f"TOOL_ERROR: Not a file: "
+                    f"{target}"
+                )
+
+        else:
+
+            matches = find_project_files(
+                target.name
+            )
+
+            if not matches:
+
+                return (
+                    f"TOOL_ERROR: File not found: "
+                    f"{file_path}"
+                )
+
+            if len(matches) > 1:
+
+                result = [
+                    "AMBIGUOUS_FILE: Multiple files found. "
+                    "Please choose one:"
+                ]
+
+                for index, match in enumerate(
+                    matches,
+                    start=1
+                ):
+
+                    result.append(
+                        f"{index}. {match}"
+                    )
+
+                return "\n".join(result)
+
+            target = matches[0]
+
+        try:
+
+            content = target.read_text(
+                encoding="utf-8"
+            )
+
+        except UnicodeDecodeError:
+
+            return (
+                "TOOL_ERROR: This file is not "
+                "a readable UTF-8 text file."
+            )
+
+        if old_text not in content:
+
+            return (
+                "TOOL_ERROR: The requested text "
+                "was not found in the file."
+            )
+
+        if old_text == new_text:
+
+            return (
+                "TOOL_ERROR: Old text and new text "
+                "are identical."
+            )
+
+        occurrence_count = content.count(
+            old_text
+        )
+
+        return (
+            "CONFIRMATION_REQUIRED_JSON: "
+            + json.dumps(
+                {
+                    "type": "file_edit",
+                    "file_path": str(target),
+                    "old_text": old_text,
+                    "new_text": new_text,
+                    "replace_all": replace_all,
+                    "occurrence_count": occurrence_count
+                }
+            )
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: Could not prepare file edit. "
+            f"Reason: {error}"
+        )
+
+# =========================
+# DESTRUCTIVE ACTION
+# =========================
 
 @tool
 def delete_all_tasks() -> str:
@@ -550,17 +1238,36 @@ def delete_all_tasks() -> str:
     )
 
 
+# =========================
+# ALL TOOLS
+# =========================
+
 TOOLS = [
+
     get_current_time,
     calculate,
     get_weather,
+
     remember_fact,
     recall_memory,
+
     create_task,
     get_tasks,
     update_task,
     complete_task,
+
     get_calendar,
     create_calendar_event,
+
+    open_website,
+    open_application,
+    open_jarvis_folder,
+
+    list_files,
+    search_files,
+    open_file,
+    read_file,
+    edit_file,
+
     delete_all_tasks,
 ]

@@ -1,505 +1,385 @@
-from typing import Literal
+import json
 
 from langchain_core.messages import (
     HumanMessage,
-    SystemMessage,
     ToolMessage,
 )
-from langchain_groq import ChatGroq
-from langgraph.graph import END, StateGraph
 
 from .agent import create_agent
-from .config import GROQ_API_KEY, GROQ_MODEL, MAX_ITERATIONS
 from .prompts import SYSTEM_PROMPT
-from .schemas import AgentPlan
-from .state import JarvisState
-from .tools import TOOLS, TASKS_FILE
+from .config import MAX_ITERATIONS
+from .tools import TOOLS
 
 
-TOOLS_BY_NAME = {
-    tool.name: tool
-    for tool in TOOLS
+CONFIRMATION_WORDS = {
+    "yes",
+    "y",
+    "confirm",
+    "confirmed",
+}
+
+CANCEL_WORDS = {
+    "no",
+    "n",
+    "cancel",
+    "cancelled",
 }
 
 
-def create_planner():
-    llm = ChatGroq(
-        api_key=GROQ_API_KEY,
-        model=GROQ_MODEL,
-        temperature=0,
+def get_tool_by_name(tool_name):
+    """
+    Find a tool from the JARVIS tool list.
+    """
+
+    for tool in TOOLS:
+
+        if getattr(tool, "name", None) == tool_name:
+
+            return tool
+
+    return None
+
+
+def extract_confirmation(tool_message):
+    """
+    Check whether a tool requested confirmation.
+    """
+
+    content = getattr(
+        tool_message,
+        "content",
+        ""
     )
 
-    return llm.with_structured_output(AgentPlan)
+    if not isinstance(
+        content,
+        str
+    ):
 
+        return None
 
-def understand(state: JarvisState):
-    return {
-        "messages": [
-            SystemMessage(content=SYSTEM_PROMPT),
-            HumanMessage(content=state["user_request"]),
-        ],
-        "iteration_count": 0,
-        "tool_results": [],
-        "plan": [],
-        "memories": [],
-        "confirmation_required": False,
-        "pending_action": None,
-        "error_detected": False,
-        "completed": False,
-        "final_response": "",
-    }
+    prefix = "CONFIRMATION_REQUIRED_JSON:"
 
+    if not content.startswith(prefix):
 
-def plan(state: JarvisState):
-    planner = create_planner()
+        return None
 
-    previous_results = state.get(
-        "tool_results",
-        []
-    )
-
-    previous_result_text = "\n".join(
-        str(result)
-        for result in previous_results
-    )
-
-    planning_prompt = SystemMessage(
-        content=(
-            "You are JARVIS planning the next action.\n\n"
-
-            "Create a short practical ordered plan.\n\n"
-
-            "Rules:\n"
-            "- Understand the user's actual goal.\n"
-            "- Review previous tool results.\n"
-            "- Use successful results already available.\n"
-            "- Do not repeat completed work.\n"
-            "- If a tool failed, analyze the error.\n"
-            "- Never repeat the exact same failed action.\n"
-            "- Choose another valid approach when possible.\n"
-            "- Never invent information.\n"
-            "- Stop when the user's request is completed.\n\n"
-
-            "Previous tool results:\n"
-            f"{previous_result_text}"
-        )
-    )
+    json_data = content[
+        len(prefix):
+    ].strip()
 
     try:
-        planning_result = planner.invoke(
-            [
-                planning_prompt
-            ]
-            + state["messages"]
+
+        return json.loads(
+            json_data
         )
 
-        current_plan = planning_result.steps
+    except json.JSONDecodeError:
 
-    except Exception:
-        current_plan = [
-            "Understand the request",
-            "Use the required tools",
-            "Review the tool results",
-            "Complete the request",
+        return None
+
+
+def run_jarvis(user_input: str):
+    """
+    Run JARVIS using the bound tools.
+
+    Returns:
+        response, pending_action
+    """
+
+    try:
+
+        llm = create_agent()
+
+        messages = [
+            (
+                "system",
+                SYSTEM_PROMPT
+            ),
+            HumanMessage(
+                content=user_input
+            ),
         ]
 
-    plan_text = "\n".join(
-        f"{index}. {step}"
-        for index, step in enumerate(
-            current_plan,
-            start=1
+        for _ in range(
+            MAX_ITERATIONS
+        ):
+
+            response = llm.invoke(
+                messages
+            )
+
+            messages.append(
+                response
+            )
+
+            tool_calls = getattr(
+                response,
+                "tool_calls",
+                []
+            )
+
+            if not tool_calls:
+
+                content = getattr(
+                    response,
+                    "content",
+                    ""
+                )
+
+                if not content:
+
+                    return (
+                        "Sorry sir, I could not generate a response.",
+                        None
+                    )
+
+                return (
+                    content,
+                    None
+                )
+
+            for tool_call in tool_calls:
+
+                tool_name = tool_call.get(
+                    "name"
+                )
+
+                tool_args = tool_call.get(
+                    "args",
+                    {}
+                )
+
+                tool = get_tool_by_name(
+                    tool_name
+                )
+
+                if tool is None:
+
+                    tool_result = (
+                        f"TOOL_ERROR: Tool "
+                        f"'{tool_name}' was not found."
+                    )
+
+                else:
+
+                    try:
+
+                        tool_result = tool.invoke(
+                            tool_args
+                        )
+
+                    except Exception as error:
+
+                        tool_result = (
+                            f"TOOL_ERROR: "
+                            f"{error}"
+                        )
+
+                tool_message = ToolMessage(
+                    content=str(
+                        tool_result
+                    ),
+                    tool_call_id=tool_call.get(
+                        "id"
+                    ),
+                )
+
+                messages.append(
+                    tool_message
+                )
+
+                pending_action = (
+                    extract_confirmation(
+                        tool_message
+                    )
+                )
+
+                if pending_action:
+
+                    occurrence_count = (
+                        pending_action.get(
+                            "occurrence_count",
+                            1
+                        )
+                    )
+
+                    if pending_action.get(
+                        "replace_all",
+                        False
+                    ):
+
+                        response_text = (
+                            "Confirmation required before "
+                            f"replacing {occurrence_count} "
+                            "occurrences in the file."
+                        )
+
+                    else:
+
+                        response_text = (
+                            "Confirmation required before "
+                            "editing the file."
+                        )
+
+                    return (
+                        response_text,
+                        pending_action
+                    )
+
+        return (
+            "Sorry sir, I could not complete the request "
+            "within the allowed steps.",
+            None
         )
-    )
-
-    execution_prompt = SystemMessage(
-        content=(
-            "Follow this plan carefully.\n\n"
-            f"{plan_text}\n\n"
-
-            "Execution rules:\n"
-            "- Use tools when required.\n"
-            "- Use previous tool results.\n"
-            "- Do not repeat successful tool calls unnecessarily.\n"
-            "- Do not repeat the exact same failed tool call.\n"
-            "- If a tool failed, choose another valid approach.\n"
-            "- Never invent information.\n"
-            "- Never claim success without confirmation.\n"
-            "- If the task is complete, answer the user.\n"
-            "- If another tool is required, call it."
-        )
-    )
-
-    messages = state["messages"] + [
-        execution_prompt
-    ]
-
-    llm = create_agent()
-
-    try:
-        response = llm.invoke(messages)
 
     except Exception as error:
-        return {
-            "messages": messages,
-            "plan": current_plan,
-            "error_detected": True,
-            "final_response": (
-                f"JARVIS encountered an error: {error}"
-            ),
-        }
 
-    tool_calls = getattr(
-        response,
-        "tool_calls",
-        []
-    )
-
-    update = {
-        "messages": messages + [response],
-        "plan": current_plan,
-        "iteration_count": (
-            state.get("iteration_count", 0)
-            + 1
-        ),
-        "error_detected": False,
-    }
-
-    if not tool_calls:
-        update["final_response"] = (
-            response.content
-            or "I couldn't generate a response."
+        return (
+            f"Sorry sir, something went wrong: {error}",
+            None
         )
-
-        update["completed"] = True
-
-    return update
-
-
-def route_after_plan(
-    state: JarvisState
-) -> Literal["act", "respond"]:
-
-    if state.get("error_detected"):
-        return "respond"
-
-    last_message = state["messages"][-1]
-
-    tool_calls = getattr(
-        last_message,
-        "tool_calls",
-        []
-    )
-
-    if tool_calls:
-        if (
-            state.get("iteration_count", 0)
-            < MAX_ITERATIONS
-        ):
-            return "act"
-
-    return "respond"
-
-
-def act(state: JarvisState):
-    last_message = state["messages"][-1]
-
-    tool_results = []
-
-    for tool_call in getattr(
-        last_message,
-        "tool_calls",
-        []
-    ):
-        tool_name = tool_call["name"]
-        tool_args = tool_call["args"]
-
-        selected_tool = TOOLS_BY_NAME.get(
-            tool_name
-        )
-
-        if selected_tool is None:
-            result = (
-                f"TOOL_ERROR: Unknown tool: "
-                f"{tool_name}"
-            )
-
-        else:
-            try:
-                result = selected_tool.invoke(
-                    tool_args
-                )
-
-            except Exception as error:
-                result = (
-                    "TOOL_ERROR: Tool execution failed. "
-                    f"Reason: {error}"
-                )
-
-        tool_results.append(result)
-
-    return {
-        "tool_results": tool_results
-    }
-
-
-def observe(state: JarvisState):
-    last_message = state["messages"][-1]
-
-    tool_messages = []
-
-    confirmation_required = False
-    pending_action = None
-    error_detected = False
-
-    for tool_call, result in zip(
-        getattr(
-            last_message,
-            "tool_calls",
-            []
-        ),
-        state.get(
-            "tool_results",
-            []
-        ),
-    ):
-        result_text = str(result)
-
-        if result_text.startswith(
-            "CONFIRMATION_REQUIRED:"
-        ):
-            confirmation_required = True
-            pending_action = tool_call["name"]
-
-        if (
-            result_text.startswith(
-                "TOOL_ERROR:"
-            )
-            or result_text.startswith(
-                "Tool error:"
-            )
-        ):
-            error_detected = True
-
-        tool_messages.append(
-            ToolMessage(
-                content=result_text,
-                tool_call_id=tool_call["id"],
-            )
-        )
-
-    return {
-        "messages": (
-            state["messages"]
-            + tool_messages
-        ),
-        "confirmation_required": (
-            confirmation_required
-        ),
-        "pending_action": pending_action,
-        "error_detected": error_detected,
-    }
-
-
-def route_after_observe(
-    state: JarvisState
-) -> Literal["plan", "respond"]:
-
-    if state.get("confirmation_required"):
-        return "respond"
-
-    if state.get("error_detected"):
-        if (
-            state.get("iteration_count", 0)
-            < MAX_ITERATIONS
-        ):
-            return "plan"
-
-        return "respond"
-
-    if (
-        state.get("iteration_count", 0)
-        >= MAX_ITERATIONS
-    ):
-        return "respond"
-
-    return "plan"
-
-
-def respond(state: JarvisState):
-    if state.get("confirmation_required"):
-        action = state.get(
-            "pending_action"
-        )
-
-        if action == "delete_all_tasks":
-            return {
-                "final_response": (
-                    "I'm about to delete all "
-                    "of your tasks. This action "
-                    "is irreversible. Do you want "
-                    "me to proceed?"
-                ),
-                "pending_action": action,
-            }
-
-        return {
-            "final_response": (
-                "This action requires your "
-                "confirmation before I can proceed."
-            ),
-            "pending_action": action,
-        }
-
-    if state.get("error_detected"):
-        return {
-            "final_response": (
-                state.get("final_response")
-                or
-                "I could not complete the request "
-                "because a tool failed."
-            )
-        }
-
-    return {
-        "final_response": (
-            state.get("final_response")
-            or "I couldn't generate a response."
-        ),
-        "completed": True,
-    }
-
-
-def build_graph():
-    graph = StateGraph(
-        JarvisState
-    )
-
-    graph.add_node(
-        "understand",
-        understand
-    )
-
-    graph.add_node(
-        "plan",
-        plan
-    )
-
-    graph.add_node(
-        "act",
-        act
-    )
-
-    graph.add_node(
-        "observe",
-        observe
-    )
-
-    graph.add_node(
-        "respond",
-        respond
-    )
-
-    graph.set_entry_point(
-        "understand"
-    )
-
-    graph.add_edge(
-        "understand",
-        "plan"
-    )
-
-    graph.add_conditional_edges(
-        "plan",
-        route_after_plan,
-        {
-            "act": "act",
-            "respond": "respond",
-        },
-    )
-
-    graph.add_edge(
-        "act",
-        "observe"
-    )
-
-    graph.add_conditional_edges(
-        "observe",
-        route_after_observe,
-        {
-            "plan": "plan",
-            "respond": "respond",
-        },
-    )
-
-    graph.add_edge(
-        "respond",
-        END
-    )
-
-    return graph.compile()
-
-
-JARVIS_GRAPH = build_graph()
-
-
-def run_jarvis(
-    user_request: str
-):
-    result = JARVIS_GRAPH.invoke(
-        {
-            "user_request": user_request
-        }
-    )
-
-    pending_action = result.get(
-        "pending_action"
-    )
-
-    request_lower = (
-        user_request.lower()
-    )
-
-    if (
-        pending_action is None
-        and (
-            "delete all my tasks"
-            in request_lower
-            or "delete all tasks"
-            in request_lower
-            or "delete every task"
-            in request_lower
-        )
-    ):
-        pending_action = (
-            "delete_all_tasks"
-        )
-
-    return (
-        result.get(
-            "final_response",
-            "I couldn't generate a response."
-        ),
-        pending_action,
-    )
 
 
 def confirm_pending_action(
-    action: str
+    pending_action: dict
 ):
-    if action == "delete_all_tasks":
+    """
+    Execute a confirmed file edit.
+    """
 
-        if not TASKS_FILE.exists():
-            return "No tasks found."
-
-        with open(
-            TASKS_FILE,
-            "w",
-            encoding="utf-8"
-        ) as file:
-            file.write("[]")
+    if not pending_action:
 
         return (
-            "All tasks have been deleted."
+            "No pending action found."
         )
 
-    return "Unknown confirmation action."
+    action_type = pending_action.get(
+        "type"
+    )
+
+    if action_type != "file_edit":
+
+        return (
+            "Sorry sir, I could not identify "
+            "the pending action."
+        )
+
+    file_path = pending_action.get(
+        "file_path"
+    )
+
+    old_text = pending_action.get(
+        "old_text"
+    )
+
+    new_text = pending_action.get(
+        "new_text"
+    )
+
+    replace_all = pending_action.get(
+        "replace_all",
+        False
+    )
+
+    if not file_path:
+
+        return (
+            "TOOL_ERROR: File path is missing."
+        )
+
+    if old_text is None:
+
+        return (
+            "TOOL_ERROR: Original text is missing."
+        )
+
+    if new_text is None:
+
+        return (
+            "TOOL_ERROR: New text is missing."
+        )
+
+    try:
+
+        from pathlib import Path
+
+        target = Path(
+            file_path
+        ).expanduser()
+
+        if not target.exists():
+
+            return (
+                f"TOOL_ERROR: File not found: "
+                f"{target}"
+            )
+
+        if not target.is_file():
+
+            return (
+                f"TOOL_ERROR: Not a file: "
+                f"{target}"
+            )
+
+        content = target.read_text(
+            encoding="utf-8"
+        )
+
+        if old_text not in content:
+
+            return (
+                "TOOL_ERROR: The original text "
+                "was not found in the file."
+            )
+
+        if replace_all:
+
+            updated_content = content.replace(
+                old_text,
+                new_text
+            )
+
+        else:
+
+            updated_content = content.replace(
+                old_text,
+                new_text,
+                1
+            )
+
+        target.write_text(
+            updated_content,
+            encoding="utf-8"
+        )
+
+        if replace_all:
+
+            occurrence_count = content.count(
+                old_text
+            )
+
+            return (
+                f"File edited successfully: "
+                f"{target} "
+                f"({occurrence_count} occurrences replaced)"
+            )
+
+        return (
+            f"File edited successfully: "
+            f"{target}"
+        )
+
+    except UnicodeDecodeError:
+
+        return (
+            "TOOL_ERROR: This file is not "
+            "a readable UTF-8 text file."
+        )
+
+    except Exception as error:
+
+        return (
+            f"TOOL_ERROR: File edit failed. "
+            f"Reason: {error}"
+        )
