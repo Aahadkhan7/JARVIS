@@ -1,18 +1,23 @@
 import argparse
 
-from .graph import run_jarvis, confirm_pending_action
+from .graph import (
+    run_jarvis,
+    confirm_pending_action,
+    confirmation_message,
+)
 from .voice import listen, speak
 
 
 def safe_speak(text):
+
     try:
-        # Keep voice responses short to stay within TTS limits.
+
         max_chars = 250
 
         if len(text) > max_chars:
+
             text = text[:max_chars]
 
-            # Avoid cutting in the middle of a sentence.
             last_stop = max(
                 text.rfind("."),
                 text.rfind("!"),
@@ -20,14 +25,151 @@ def safe_speak(text):
             )
 
             if last_stop > 80:
-                text = text[:last_stop + 1]
+
+                text = text[
+                    :last_stop + 1
+                ]
+
             else:
+
                 text += "."
 
         speak(text)
 
-    except Exception as error:
-        print(f"TTS unavailable: {error}")
+    except Exception:
+
+        print(
+            "TTS temporarily unavailable. "
+            "Continuing in text mode."
+        )
+
+
+def select_calendar_event(
+    selection,
+    pending_selection
+):
+
+    try:
+
+        number = int(
+            selection.strip()
+        )
+
+    except (
+        ValueError,
+        AttributeError
+    ):
+
+        return (
+            "Please enter the event number.",
+            pending_selection
+        )
+
+    events = pending_selection.get(
+        "events",
+        []
+    )
+
+    if number < 1 or number > len(events):
+
+        return (
+            f"Please choose a number from 1 "
+            f"to {len(events)}.",
+            pending_selection
+        )
+
+    selected = events[
+        number - 1
+    ]
+
+    event = selected.get(
+        "event",
+        {}
+    )
+
+    index = selected.get(
+        "index"
+    )
+
+    operation = pending_selection.get(
+        "operation",
+        "update"
+    )
+
+    base_action = pending_selection.get(
+        "action",
+        {}
+    ).copy()
+
+    # DELETE
+    if operation == "delete":
+
+        action = {
+            "type": "calendar_delete",
+            "index": index,
+            "title": event.get(
+                "title"
+            ),
+            "date": event.get(
+                "date"
+            ),
+            "time": event.get(
+                "time"
+            ) or "",
+        }
+
+    # UPDATE
+    else:
+
+        action = base_action
+
+        old_title = event.get(
+            "title"
+        )
+
+        action["type"] = (
+            "calendar_update"
+        )
+
+        action["index"] = index
+
+        action["old_title"] = old_title
+
+        action["old_date"] = event.get(
+            "date"
+        )
+
+        action["old_time"] = event.get(
+            "time"
+        ) or ""
+
+        action["new_title"] = old_title
+
+        action["new_date"] = (
+            pending_selection.get(
+                "new_date"
+            )
+        )
+
+        action["new_time"] = (
+            pending_selection.get(
+                "new_time"
+            )
+        )
+
+        action["new_description"] = (
+            event.get(
+                "description"
+            )
+            or ""
+        )
+
+    return (
+        confirmation_message(
+            action
+        ),
+        action
+    )
 
 
 def process_request(
@@ -37,6 +179,31 @@ def process_request(
 
     if pending_action:
 
+        action_type = pending_action.get(
+            "type"
+        )
+
+        # Calendar event selection
+        if action_type == "calendar_selection":
+
+            response, new_action = (
+                select_calendar_event(
+                    user_input,
+                    pending_action
+                )
+            )
+
+            print(
+                f"JARVIS: {response}"
+            )
+
+            safe_speak(
+                response
+            )
+
+            return new_action
+
+        # Normal confirmation
         answer = (
             user_input
             .lower()
@@ -62,7 +229,9 @@ def process_request(
                     f"JARVIS: {response}"
                 )
 
-                safe_speak(response)
+                safe_speak(
+                    response
+                )
 
                 return None
 
@@ -73,7 +242,8 @@ def process_request(
                 )
 
                 safe_speak(
-                    "Sorry sir, I could not complete that action."
+                    "Sorry sir, I could not "
+                    "complete that action."
                 )
 
                 return pending_action
@@ -85,13 +255,17 @@ def process_request(
             "cancelled",
         }:
 
-            response = "Action cancelled."
+            response = (
+                "Action cancelled."
+            )
 
             print(
                 f"JARVIS: {response}"
             )
 
-            safe_speak(response)
+            safe_speak(
+                response
+            )
 
             return None
 
@@ -103,21 +277,27 @@ def process_request(
             f"JARVIS: {response}"
         )
 
-        safe_speak(response)
+        safe_speak(
+            response
+        )
 
         return pending_action
 
     try:
 
         response, new_pending_action = (
-            run_jarvis(user_input)
+            run_jarvis(
+                user_input
+            )
         )
 
         print(
             f"JARVIS: {response}"
         )
 
-        safe_speak(response)
+        safe_speak(
+            response
+        )
 
         return new_pending_action
 
@@ -136,13 +316,10 @@ def process_request(
 
 def text_mode():
 
-    print()
-    print("================================")
-    print("        JARVIS ONLINE")
-    print("================================")
-    print("Text mode enabled.")
-    print("Type 'exit' to stop.")
-    print()
+    print(
+        "JARVIS is online. "
+        "Type 'exit' to stop."
+    )
 
     pending_action = None
 
@@ -154,28 +331,18 @@ def text_mode():
                 "You: "
             ).strip()
 
-        except KeyboardInterrupt:
+        except (
+            KeyboardInterrupt,
+            EOFError
+        ):
 
-            print(
-                "\nJARVIS: Goodbye, sir."
-            )
-
+            print()
             break
 
         if not user_input:
             continue
 
-        if (
-            user_input
-            .lower()
-            .strip()
-            == "exit"
-        ):
-
-            print(
-                "JARVIS: Goodbye, sir."
-            )
-
+        if user_input.lower() == "exit":
             break
 
         pending_action = (
@@ -188,13 +355,9 @@ def text_mode():
 
 def voice_mode():
 
-    print()
-    print("================================")
-    print("        JARVIS ONLINE")
-    print("================================")
-    print("Voice mode enabled.")
-    print("Say 'exit' to stop.")
-    print()
+    print(
+        "JARVIS voice mode started."
+    )
 
     pending_action = None
 
@@ -218,16 +381,6 @@ def voice_mode():
                 == "exit"
             ):
 
-                response = (
-                    "Goodbye, sir."
-                )
-
-                print(
-                    f"JARVIS: {response}"
-                )
-
-                safe_speak(response)
-
                 break
 
             pending_action = (
@@ -240,7 +393,7 @@ def voice_mode():
         except KeyboardInterrupt:
 
             print(
-                "\nJARVIS: Goodbye, sir."
+                "\nVoice mode stopped."
             )
 
             break
@@ -248,15 +401,13 @@ def voice_mode():
         except Exception as error:
 
             print(
-                f"JARVIS Error: {error}"
+                f"JARVIS Voice Error: {error}"
             )
 
 
 def main():
 
-    parser = argparse.ArgumentParser(
-        description="JARVIS Personal AI Assistant"
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--mode",
@@ -279,4 +430,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()

@@ -26,12 +26,6 @@
     {
         "title": "JavaScript study",
         "date": "2026-09-15",
-        "time": "23:59",
-        "description": ""
-    },
-    {
-        "title": "JavaScript study",
-        "date": "2026-09-15",
         "time": "10:00 AM",
         "description": ""
     },
@@ -40,5 +34,41 @@
         "date": "2026-09-15",
         "time": "05:00",
         "description": ""
+    },
+    {
+        "title": "Study session: JavaScript",
+        "date": "2026-09-17",
+        "time": "18:00",
+        "description": null
+    },
+    {
+        "title": "Study session",
+        "date": "2026-09-18",
+        "time": "18:00",
+        "description": "JavaScript"
+    },
+    {
+        "title": "JavaScript padhna",
+        "date": "2026-09-18",
+        "time": "07:00",
+        "description": null
+    },
+    {
+        "title": "JavaScript Study",
+        "date": "2026-09-20",
+        "time": "10:00",
+        "description": null
+    },
+    {
+        "title": "[Reminder] study JavaScript",
+        "date": "2026-09-18",
+        "time": "20:00",
+        "description": "JARVIS reminder"
+    },
+    {
+        "title": "JavaScript Exam",
+        "date": "2026-09-25",
+        "time": "11:00",
+        "description": null
     }
 ]

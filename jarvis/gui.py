@@ -1,46 +1,217 @@
-import threading
-import tkinter as tk
-from tkinter import simpledialog
-
 import customtkinter as ctk
+import threading
+import math
+import time
 
-from .graph import run_jarvis, confirm_pending_action
+
+from . import graph
+from .graph import run_jarvis
 from .voice import listen, speak
 
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
-
-
-class JarvisGUI(ctk.CTk):
+class JarvisGUI:
 
     def __init__(self):
-        super().__init__()
 
-        self.title("J A R V I S")
-        self.geometry("1100x750")
-        self.minsize(900, 650)
+        self.app = ctk.CTk()
 
-        self.pending_action = None
-        self.is_busy = False
+        self.app.title("JARVIS AI Assistant")
+        self.app.geometry("800x600")
+        self.app.minsize(700, 500)
+
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("blue")
+
+        self.is_processing = False
+        self.is_listening = False
+        self.message_labels = []
 
         self.build_ui()
+        self.animate_orb()
 
-    # =========================
-    # BUILD UI
-    # =========================
+        self.add_message(
+            "JARVIS online. How can I help you?",
+            "jarvis"
+        )
+
+    # =========================================================
+    # UI
+    # =========================================================
 
     def build_ui(self):
 
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.app.grid_columnconfigure(1, weight=1)
+        self.app.grid_rowconfigure(0, weight=1)
 
-        # =========================
+        # =====================================================
+        # SIDEBAR
+        # =====================================================
+
+        self.sidebar = ctk.CTkFrame(
+            self.app,
+            width=265,
+            corner_radius=0
+        )
+
+        self.sidebar.grid(
+            row=0,
+            column=0,
+            sticky="nsew"
+        )
+
+        self.sidebar.grid_propagate(False)
+
+        self.logo = ctk.CTkLabel(
+            self.sidebar,
+            text="J.A.R.V.I.S",
+            font=ctk.CTkFont(
+                size=28,
+                weight="bold"
+            )
+        )
+
+        self.logo.pack(
+            pady=(25, 5)
+        )
+
+        self.logo_subtitle = ctk.CTkLabel(
+            self.sidebar,
+            text="PERSONAL AI OPERATING ASSISTANT",
+            font=ctk.CTkFont(size=10)
+        )
+
+        self.logo_subtitle.pack(
+            pady=(0, 15)
+        )
+
+        # =====================================================
+        # ORB
+        # =====================================================
+
+        self.orb = ctk.CTkCanvas(
+            self.sidebar,
+            width=180,
+            height=180,
+            bg="#1a1a1a",
+            highlightthickness=0
+        )
+
+        self.orb.pack(
+            pady=5
+        )
+
+        # =====================================================
+        # STATUS
+        # =====================================================
+
+        self.status_card = ctk.CTkFrame(
+            self.sidebar,
+            corner_radius=12
+        )
+
+        self.status_card.pack(
+            padx=18,
+            pady=12,
+            fill="x"
+        )
+
+        self.status_title = ctk.CTkLabel(
+            self.status_card,
+            text="SYSTEM STATUS",
+            font=ctk.CTkFont(
+                size=11,
+                weight="bold"
+            )
+        )
+
+        self.status_title.pack(
+            pady=(10, 2)
+        )
+
+        self.status_label = ctk.CTkLabel(
+            self.status_card,
+            text="● ONLINE",
+            text_color="#00ff88",
+            font=ctk.CTkFont(
+                size=14,
+                weight="bold"
+            )
+        )
+
+        self.status_label.pack(
+            pady=(0, 10)
+        )
+
+        # =====================================================
+        # TELEMETRY
+        # =====================================================
+
+        self.telemetry = ctk.CTkLabel(
+            self.sidebar,
+            text=(
+                "CORE: ONLINE\n"
+                "MEMORY: READY\n"
+                "TOOLS: READY\n"
+                "VOICE: READY"
+            ),
+            justify="left",
+            font=ctk.CTkFont(size=11)
+        )
+
+        self.telemetry.pack(
+            padx=25,
+            pady=10,
+            anchor="w"
+        )
+
+        # =====================================================
+        # QUICK BUTTONS
+        # =====================================================
+
+        self.sidebar_button = ctk.CTkButton(
+            self.sidebar,
+            text="CLEAR CHAT",
+            command=self.clear_chat
+        )
+
+        self.sidebar_button.pack(
+            padx=18,
+            pady=(10, 5),
+            fill="x"
+        )
+
+        # =====================================================
+        # MAIN AREA
+        # =====================================================
+
+        self.main = ctk.CTkFrame(
+            self.app,
+            corner_radius=0
+        )
+
+        self.main.grid(
+            row=0,
+            column=1,
+            sticky="nsew"
+        )
+
+        self.main.grid_columnconfigure(
+            0,
+            weight=1
+        )
+
+        self.main.grid_rowconfigure(
+            1,
+            weight=1
+        )
+
+        # =====================================================
         # HEADER
-        # =========================
+        # =====================================================
 
         self.header = ctk.CTkFrame(
-            self,
+            self.main,
+            height=65,
             corner_radius=0
         )
 
@@ -51,435 +222,334 @@ class JarvisGUI(ctk.CTk):
         )
 
         self.header.grid_columnconfigure(
-            1,
-            weight=1
-        )
-
-        self.logo = ctk.CTkLabel(
-            self.header,
-            text="J A R V I S",
-            font=ctk.CTkFont(
-                size=28,
-                weight="bold"
-            )
-        )
-
-        self.logo.grid(
-            row=0,
-            column=0,
-            padx=25,
-            pady=15
-        )
-
-        self.status_label = ctk.CTkLabel(
-            self.header,
-            text="● ONLINE",
-            text_color="green",
-            font=ctk.CTkFont(
-                size=14,
-                weight="bold"
-            )
-        )
-
-        self.status_label.grid(
-            row=0,
-            column=2,
-            padx=25
-        )
-
-        # =========================
-        # MAIN FRAME
-        # =========================
-
-        self.main_frame = ctk.CTkFrame(
-            self,
-            fg_color="transparent"
-        )
-
-        self.main_frame.grid(
-            row=1,
-            column=0,
-            sticky="nsew",
-            padx=20,
-            pady=15
-        )
-
-        self.main_frame.grid_columnconfigure(
             0,
             weight=1
         )
 
-        self.main_frame.grid_rowconfigure(
-            1,
-            weight=1
-        )
-
-        # =========================
-        # CORE
-        # =========================
-
-        self.core_frame = ctk.CTkFrame(
-            self.main_frame,
-            height=130,
-            corner_radius=20
-        )
-
-        self.core_frame.grid(
-            row=0,
-            column=0,
-            sticky="ew",
-            pady=(0, 15)
-        )
-
-        self.core_frame.grid_propagate(False)
-
-        self.core_label = ctk.CTkLabel(
-            self.core_frame,
-            text="◉\nONLINE",
+        self.header_title = ctk.CTkLabel(
+            self.header,
+            text="JARVIS",
             font=ctk.CTkFont(
-                size=25,
+                size=22,
                 weight="bold"
             )
         )
 
-        self.core_label.place(
-            relx=0.5,
-            rely=0.5,
-            anchor="center"
+        self.header_title.grid(
+            row=0,
+            column=0,
+            padx=20,
+            pady=18,
+            sticky="w"
         )
 
-        # =========================
-        # CHAT
-        # =========================
-
-        self.chat_box = ctk.CTkTextbox(
-            self.main_frame,
-            corner_radius=15,
+        self.header_status = ctk.CTkLabel(
+            self.header,
+            text="READY",
+            text_color="#00ff88",
             font=ctk.CTkFont(
-                size=14
-            ),
-            wrap="word"
+                size=11,
+                weight="bold"
+            )
         )
 
-        self.chat_box.grid(
+        self.header_status.grid(
+            row=0,
+            column=1,
+            padx=20,
+            pady=18
+        )
+
+        # =====================================================
+        # CHAT
+        # =====================================================
+
+        self.chat_content = ctk.CTkScrollableFrame(
+            self.main,
+            corner_radius=0
+        )
+
+        self.chat_content.grid(
             row=1,
             column=0,
-            sticky="nsew"
+            sticky="nsew",
+            padx=8,
+            pady=5
         )
 
-        self.chat_box.configure(
-            state="disabled"
+        self.chat_content.grid_columnconfigure(
+            0,
+            weight=1
         )
 
-        # =========================
-        # QUICK ACTIONS
-        # =========================
+        # =====================================================
+        # BOTTOM AREA
+        # =====================================================
 
-        self.quick_frame = ctk.CTkFrame(
-            self.main_frame,
-            fg_color="transparent"
+        self.bottom = ctk.CTkFrame(
+            self.main,
+            corner_radius=0
         )
 
-        self.quick_frame.grid(
+        self.bottom.grid(
             row=2,
             column=0,
             sticky="ew",
-            pady=12
+            padx=10,
+            pady=10
         )
 
-        for i in range(6):
-
-            self.quick_frame.grid_columnconfigure(
-                i,
-                weight=1
-            )
-
-        # TASKS
-
-        self.tasks_button = ctk.CTkButton(
-            self.quick_frame,
-            text="TASKS",
-            command=lambda: self.quick_command(
-                "Show me my pending tasks."
-            )
-        )
-
-        self.tasks_button.grid(
-            row=0,
-            column=0,
-            padx=4,
-            sticky="ew"
-        )
-
-        # CALENDAR
-
-        self.calendar_button = ctk.CTkButton(
-            self.quick_frame,
-            text="CALENDAR",
-            command=lambda: self.quick_command(
-                "Show me my calendar."
-            )
-        )
-
-        self.calendar_button.grid(
-            row=0,
-            column=1,
-            padx=4,
-            sticky="ew"
-        )
-
-        # MEMORY
-
-        self.memory_button = ctk.CTkButton(
-            self.quick_frame,
-            text="MEMORY",
-            command=lambda: self.quick_command(
-                "What do you remember about me?"
-            )
-        )
-
-        self.memory_button.grid(
-            row=0,
-            column=2,
-            padx=4,
-            sticky="ew"
-        )
-
-        # FILES
-
-        self.files_button = ctk.CTkButton(
-            self.quick_frame,
-            text="FILES",
-            command=self.show_files
-        )
-
-        self.files_button.grid(
-            row=0,
-            column=3,
-            padx=4,
-            sticky="ew"
-        )
-
-        # SEARCH
-
-        self.search_button = ctk.CTkButton(
-            self.quick_frame,
-            text="SEARCH",
-            command=self.search_file
-        )
-
-        self.search_button.grid(
-            row=0,
-            column=4,
-            padx=4,
-            sticky="ew"
-        )
-
-        # OPEN
-
-        self.open_button = ctk.CTkButton(
-            self.quick_frame,
-            text="OPEN",
-            command=self.open_file
-        )
-
-        self.open_button.grid(
-            row=0,
-            column=5,
-            padx=4,
-            sticky="ew"
-        )
-
-        # =========================
-        # INPUT
-        # =========================
-
-        self.input_frame = ctk.CTkFrame(
-            self.main_frame,
-            fg_color="transparent"
-        )
-
-        self.input_frame.grid(
-            row=3,
-            column=0,
-            sticky="ew"
-        )
-
-        self.input_frame.grid_columnconfigure(
+        self.bottom.grid_columnconfigure(
             0,
             weight=1
         )
 
         self.input_box = ctk.CTkEntry(
-            self.input_frame,
-            placeholder_text="Talk to JARVIS...",
-            height=45,
-            font=ctk.CTkFont(
-                size=14
-            )
+            self.bottom,
+            placeholder_text="Ask JARVIS anything..."
         )
 
         self.input_box.grid(
             row=0,
             column=0,
-            sticky="ew",
-            padx=(0, 8)
+            padx=(0, 8),
+            pady=5,
+            sticky="ew"
         )
 
         self.input_box.bind(
             "<Return>",
-            lambda event: self.send_message()
+            self.send_message
         )
-
-        # MICROPHONE
-
-        self.mic_button = ctk.CTkButton(
-            self.input_frame,
-            text="🎙",
-            width=55,
-            height=45,
-            command=self.voice_input
-        )
-
-        self.mic_button.grid(
-            row=0,
-            column=1,
-            padx=4
-        )
-
-        # SEND
 
         self.send_button = ctk.CTkButton(
-            self.input_frame,
+            self.bottom,
             text="SEND",
-            width=90,
-            height=45,
+            width=75,
             command=self.send_message
         )
 
         self.send_button.grid(
             row=0,
+            column=1,
+            padx=4,
+            pady=5
+        )
+
+        # =====================================================
+        # MIC BUTTON
+        # =====================================================
+
+        self.mic_button = ctk.CTkButton(
+            self.bottom,
+            text="🎤 MIC",
+            width=85,
+            command=self.start_voice_input
+        )
+
+        self.mic_button.grid(
+            row=0,
             column=2,
-            padx=(4, 0)
+            padx=(4, 0),
+            pady=5
         )
 
-        # =========================
-        # WELCOME
-        # =========================
+        # =====================================================
+        # PROCESSING LABEL
+        # =====================================================
 
-        self.add_message(
-            "JARVIS",
-            "Online, sir. How can I help?"
+        self.processing_label = ctk.CTkLabel(
+            self.main,
+            text="",
+            font=ctk.CTkFont(size=11)
         )
 
-    # =========================
-    # ADD MESSAGE
-    # =========================
+        self.processing_label.grid(
+            row=3,
+            column=0,
+            pady=(0, 5)
+        )
+
+    # =========================================================
+    # MESSAGE
+    # =========================================================
 
     def add_message(
         self,
-        sender,
-        message
+        message,
+        sender="jarvis"
     ):
 
-        self.chat_box.configure(
-            state="normal"
+        message = str(message)
+
+        message_frame = ctk.CTkFrame(
+            self.chat_content,
+            corner_radius=12
         )
 
-        self.chat_box.insert(
-            "end",
-            f"{sender}: {message}\n\n"
+        message_frame.grid(
+            row=len(self.message_labels),
+            column=0,
+            padx=8,
+            pady=6,
+            sticky="ew"
         )
 
-        self.chat_box.see(
-            "end"
+        message_frame.grid_columnconfigure(
+            0,
+            weight=1
         )
 
-        self.chat_box.configure(
-            state="disabled"
-        )
+        if sender == "user":
 
-    # =========================
-    # BUSY STATUS
-    # =========================
-
-    def set_busy(
-        self,
-        busy
-    ):
-
-        self.is_busy = busy
-
-        if busy:
-
-            self.status_label.configure(
-                text="● THINKING",
-                text_color="orange"
-            )
-
-            self.core_label.configure(
-                text="◉\nTHINKING"
-            )
-
-            buttons = [
-                self.send_button,
-                self.mic_button,
-                self.tasks_button,
-                self.calendar_button,
-                self.memory_button,
-                self.files_button,
-                self.search_button,
-                self.open_button
-            ]
-
-            for button in buttons:
-
-                button.configure(
-                    state="disabled"
-                )
+            sender_text = "YOU"
+            sender_color = "#4da6ff"
 
         else:
 
-            self.status_label.configure(
-                text="● ONLINE",
-                text_color="green"
+            sender_text = "JARVIS"
+            sender_color = "#00ff88"
+
+        sender_label = ctk.CTkLabel(
+            message_frame,
+            text=sender_text,
+            text_color=sender_color,
+            font=ctk.CTkFont(
+                size=10,
+                weight="bold"
+            )
+        )
+
+        sender_label.grid(
+            row=0,
+            column=0,
+            padx=12,
+            pady=(8, 2),
+            sticky="w"
+        )
+
+        message_label = ctk.CTkLabel(
+            message_frame,
+            text=message,
+            justify="left",
+            anchor="w",
+            wraplength=520,
+            font=ctk.CTkFont(
+                size=13
+            )
+        )
+
+        message_label.grid(
+            row=1,
+            column=0,
+            padx=12,
+            pady=(2, 8),
+            sticky="ew"
+        )
+
+        copy_button = ctk.CTkButton(
+            message_frame,
+            text="COPY",
+            width=55,
+            height=24,
+            font=ctk.CTkFont(size=9),
+            command=lambda m=message: self.copy_message(m)
+        )
+
+        copy_button.grid(
+            row=0,
+            column=1,
+            rowspan=2,
+            padx=8
+        )
+
+        self.message_labels.append(
+            (
+                message_label,
+                sender
+            )
+        )
+
+        self.app.after(
+            50,
+            self.scroll_chat_bottom
+        )
+
+    # =========================================================
+    # COPY
+    # =========================================================
+
+    def copy_message(self, message):
+
+        try:
+
+            self.app.clipboard_clear()
+
+            self.app.clipboard_append(
+                str(message)
             )
 
-            self.core_label.configure(
-                text="◉\nONLINE"
+            self.processing_label.configure(
+                text="Message copied."
             )
 
-            buttons = [
-                self.send_button,
-                self.mic_button,
-                self.tasks_button,
-                self.calendar_button,
-                self.memory_button,
-                self.files_button,
-                self.search_button,
-                self.open_button
-            ]
-
-            for button in buttons:
-
-                button.configure(
-                    state="normal"
+            self.app.after(
+                1200,
+                lambda: self.processing_label.configure(
+                    text=""
                 )
+            )
 
-    # =========================
-    # SEND MESSAGE
-    # =========================
+        except Exception:
 
-    def send_message(self):
+            pass
 
-        if self.is_busy:
+    # =========================================================
+    # SCROLL
+    # =========================================================
 
+    def scroll_chat_bottom(self):
+
+        try:
+
+            canvas = self.chat_content._parent_canvas
+
+            canvas.update_idletasks()
+
+            canvas.yview_moveto(1.0)
+
+        except Exception:
+
+            pass
+
+    # =========================================================
+    # CLEAR CHAT
+    # =========================================================
+
+    def clear_chat(self):
+
+        for widget in self.chat_content.winfo_children():
+            widget.destroy()
+
+        self.message_labels.clear()
+
+        self.add_message(
+            "Chat cleared. How can I help you?",
+            "jarvis"
+        )
+
+    # =========================================================
+    # SEND TEXT
+    # =========================================================
+
+    def send_message(self, event=None):
+
+        if self.is_processing:
             return
 
-        user_input = self.input_box.get().strip()
+        text = self.input_box.get().strip()
 
-        if not user_input:
-
+        if not text:
             return
 
         self.input_box.delete(
@@ -487,375 +557,501 @@ class JarvisGUI(ctk.CTk):
             "end"
         )
 
-        self.process_text(
-            user_input
+        self.add_message(
+            text,
+            "user"
         )
 
-    # =========================
-    # QUICK COMMAND
-    # =========================
+        self.process_request_async(
+            text,
+            speak_response=False
+        )
+
+    # =========================================================
+    # VOICE INPUT
+    # =========================================================
+
+    def start_voice_input(self):
+
+        if self.is_processing:
+            return
+
+        if self.is_listening:
+            return
+
+        self.is_listening = True
+
+        self.mic_button.configure(
+            text="🎤 LISTENING...",
+            state="disabled"
+        )
+
+        self.send_button.configure(
+            state="disabled"
+        )
+
+        self.input_box.configure(
+            state="disabled"
+        )
+
+        self.status_label.configure(
+            text="● LISTENING",
+            text_color="#ffaa00"
+        )
+
+        self.header_status.configure(
+            text="LISTENING",
+            text_color="#ffaa00"
+        )
+
+        self.processing_label.configure(
+            text="Speak now..."
+        )
+
+        thread = threading.Thread(
+            target=self.voice_worker,
+            daemon=True
+        )
+
+        thread.start()
+
+    # =========================================================
+    # VOICE WORKER
+    # =========================================================
+
+    def voice_worker(self):
+
+        try:
+
+            text = listen()
+
+            if not text:
+
+                self.app.after(
+                    0,
+                    self.voice_finished
+                )
+
+                return
+
+            self.app.after(
+                0,
+                lambda t=text: self.add_message(
+                    t,
+                    "user"
+                )
+            )
+
+            self.app.after(
+                0,
+                lambda t=text: self.process_request_async(
+                    t,
+                    speak_response=True
+                )
+            )
+
+        except Exception as error:
+
+            self.app.after(
+                0,
+                lambda e=error: self.show_voice_error(e)
+            )
+
+    # =========================================================
+    # VOICE FINISHED
+    # =========================================================
+
+    def voice_finished(self):
+
+        self.is_listening = False
+
+        self.mic_button.configure(
+            text="🎤 MIC",
+            state="normal"
+        )
+
+        self.send_button.configure(
+            state="normal"
+        )
+
+        self.input_box.configure(
+            state="normal"
+        )
+
+        self.status_label.configure(
+            text="● ONLINE",
+            text_color="#00ff88"
+        )
+
+        self.header_status.configure(
+            text="READY",
+            text_color="#00ff88"
+        )
+
+        self.processing_label.configure(
+            text=""
+        )
+
+    # =========================================================
+    # VOICE ERROR
+    # =========================================================
+
+    def show_voice_error(
+        self,
+        error
+    ):
+
+        print(
+            f"Voice GUI error: {error}"
+        )
+
+        self.voice_finished()
+
+        self.add_message(
+            "I could not process the voice input.",
+            "jarvis"
+        )
+
+    # =========================================================
+    # PROCESS REQUEST ASYNC
+    # =========================================================
+
+    def process_request_async(
+        self,
+        text,
+        speak_response=False
+    ):
+
+        if self.is_processing:
+            return
+
+        self.is_processing = True
+
+        self.send_button.configure(
+            state="disabled"
+        )
+
+        self.mic_button.configure(
+            state="disabled"
+        )
+
+        self.input_box.configure(
+            state="disabled"
+        )
+
+        self.status_label.configure(
+            text="● PROCESSING",
+            text_color="#ffaa00"
+        )
+
+        self.header_status.configure(
+            text="PROCESSING",
+            text_color="#ffaa00"
+        )
+
+        self.processing_label.configure(
+            text="JARVIS is thinking..."
+        )
+
+        thread = threading.Thread(
+            target=self.process_request,
+            args=(
+                text,
+                speak_response
+            ),
+            daemon=True
+        )
+
+        thread.start()
+
+    # =========================================================
+    # PROCESS REQUEST
+    # =========================================================
+
+    def process_request(
+        self,
+        text,
+        speak_response=False
+    ):
+
+        try:
+
+            result = run_jarvis(text)
+
+            if isinstance(result, tuple) and len(result) > 1:
+
+                if result[1] is not None:
+
+                    graph.PENDING_ACTION = result[1]
+
+            self.app.after(
+                0,
+                lambda r=result,
+                    sv=speak_response:
+                self.show_result(
+                    r,
+                    sv
+                )
+            )
+
+        except Exception as error:
+
+            self.app.after(
+                0,
+                lambda e=error:
+                self.show_error(e)
+            )
+    # =========================================================
+    # SHOW RESULT
+    # =========================================================
+
+    def show_result(
+        self,
+        result,
+        speak_response=False
+    ):
+
+        if isinstance(result, tuple):
+
+            result_text = str(result[0])
+
+        else:
+
+            result_text = str(result)
+
+        self.add_message(
+            result_text,
+            "jarvis"
+        )
+
+        if speak_response:
+
+            speech_thread = threading.Thread(
+                target=self.speak_response,
+                args=(result_text,),
+                daemon=True
+            )
+
+            speech_thread.start()
+
+        else:
+
+            self.finish_processing()
+
+    # =========================================================
+    # SPEAK RESPONSE
+    # =========================================================
+
+    def speak_response(
+        self,
+        text
+    ):
+
+        try:
+
+            self.app.after(
+                0,
+                lambda: self.processing_label.configure(
+                    text="JARVIS is speaking..."
+                )
+            )
+
+            speak(text)
+
+        except Exception as error:
+
+            print(
+                f"Speech error: {error}"
+            )
+
+        finally:
+
+            self.app.after(
+                0,
+                self.finish_processing
+            )
+
+    # =========================================================
+    # ERROR
+    # =========================================================
+
+    def show_error(
+        self,
+        error
+    ):
+
+        self.add_message(
+            f"Error: {error}",
+            "jarvis"
+        )
+
+        self.finish_processing()
+
+    # =========================================================
+    # FINISH PROCESSING
+    # =========================================================
+
+    def finish_processing(self):
+
+        self.is_processing = False
+        self.is_listening = False
+
+        self.send_button.configure(
+            state="normal"
+        )
+
+        self.mic_button.configure(
+            text="🎤 MIC",
+            state="normal"
+        )
+
+        self.input_box.configure(
+            state="normal"
+        )
+
+        self.status_label.configure(
+            text="● ONLINE",
+            text_color="#00ff88"
+        )
+
+        self.header_status.configure(
+            text="READY",
+            text_color="#00ff88"
+        )
+
+        self.processing_label.configure(
+            text=""
+        )
+
+        self.input_box.focus_set()
+
+    # =========================================================
+    # CONFIRMATION
+    # =========================================================
+
+    def confirm_action(
+        self,
+        answer
+    ):
+
+        if self.is_processing:
+            return
+
+        self.add_message(
+            answer,
+            "user"
+        )
+
+        self.process_request_async(
+            answer,
+            speak_response=False
+        )
+
+    # =========================================================
+    # QUICK COMMANDS
+    # =========================================================
 
     def quick_command(
         self,
         command
     ):
 
-        if self.is_busy:
-
+        if self.is_processing:
             return
-
-        self.process_text(
-            command
-        )
-
-    # =========================
-    # FILES
-    # =========================
-
-    def show_files(self):
-
-        if self.is_busy:
-
-            return
-
-        self.process_text(
-            "Show me the files in my JARVIS project folder."
-        )
-
-    # =========================
-    # SEARCH FILE
-    # =========================
-
-    def search_file(self):
-
-        if self.is_busy:
-
-            return
-
-        filename = simpledialog.askstring(
-            "Search File",
-            "Enter the file or folder name:"
-        )
-
-        if not filename:
-
-            return
-
-        self.process_text(
-            f"Find {filename}."
-        )
-
-    # =========================
-    # OPEN FILE
-    # =========================
-
-    def open_file(self):
-
-        if self.is_busy:
-
-            return
-
-        filename = simpledialog.askstring(
-            "Open File",
-            "Enter the file name to open:"
-        )
-
-        if not filename:
-
-            return
-
-        self.process_text(
-            f"Open {filename}."
-        )
-
-    # =========================
-    # TEXT PROCESSING
-    # =========================
-
-    def process_text(
-        self,
-        user_input
-    ):
 
         self.add_message(
-            "YOU",
-            user_input
+            command,
+            "user"
         )
 
-        self.set_busy(
-            True
+        self.process_request_async(
+            command,
+            speak_response=False
         )
 
-        thread = threading.Thread(
-            target=self.process_text_background,
-            args=(user_input,),
-            daemon=True
-        )
+    # =========================================================
+    # ORB ANIMATION
+    # =========================================================
 
-        thread.start()
-
-    # =========================
-    # TEXT BACKGROUND
-    # =========================
-
-    def process_text_background(
-        self,
-        user_input
-    ):
+    def animate_orb(self):
 
         try:
 
-            if self.pending_action:
+            self.orb.delete("all")
 
-                answer = user_input.lower().strip()
+            width = 180
+            height = 180
 
-                if answer in {
-                    "yes",
-                    "y",
-                    "confirm",
-                    "confirmed"
-                }:
+            center_x = width / 2
+            center_y = height / 2
 
-                    response = confirm_pending_action(
-                        self.pending_action
-                    )
+            pulse = math.sin(
+                time.time() * 3
 
-                    self.pending_action = None
+            )    
 
-                elif answer in {
-                    "no",
-                    "n",
-                    "cancel",
-                    "cancelled"
-                }:
+            base_radius = 42
 
-                    response = "Action cancelled."
-
-                    self.pending_action = None
-
-                else:
-
-                    response = (
-                        "Please answer yes or no."
-                    )
-
-            else:
-
-                response, new_pending_action = run_jarvis(
-                    user_input
-                )
-
-                self.pending_action = (
-                    new_pending_action
-                )
-
-            self.after(
-                0,
-                lambda: self.finish_response(
-                    response
-                )
+            radius = (
+                base_radius
+                + pulse * 2
             )
 
-        except Exception as error:
-
-            self.after(
-                0,
-                lambda: self.finish_response(
-                    f"Sorry sir, something went wrong: {error}"
-                )
+            self.orb.create_oval(
+                center_x - radius,
+                center_y - radius,
+                center_x + radius,
+                center_y + radius,
+                outline="#00aaff",
+                width=3
             )
 
-    # =========================
-    # FINISH RESPONSE
-    # =========================
-
-    def finish_response(
-        self,
-        response
-    ):
-
-        self.add_message(
-            "JARVIS",
-            response
-        )
-
-        self.set_busy(
-            False
-        )
-
-    # =========================
-    # VOICE INPUT
-    # =========================
-
-    def voice_input(self):
-
-        if self.is_busy:
-
-            return
-
-        self.set_busy(
-            True
-        )
-
-        thread = threading.Thread(
-            target=self.voice_background,
-            daemon=True
-        )
-
-        thread.start()
-
-    # =========================
-    # VOICE BACKGROUND
-    # =========================
-
-    def voice_background(self):
-
-        try:
-
-            user_input = listen()
-
-            if not user_input:
-
-                self.after(
-                    0,
-                    lambda: self.set_busy(False)
-                )
-
-                return
-
-            self.after(
-                0,
-                lambda: self.add_message(
-                    "YOU",
-                    user_input
-                )
+            self.orb.create_oval(
+                center_x - 30,
+                center_y - 30,
+                center_x + 30,
+                center_y + 30,
+                fill="#0b2a3d",
+                outline="#00ffcc",
+                width=2
             )
 
-            if self.pending_action:
-
-                answer = user_input.lower().strip()
-
-                if answer in {
-                    "yes",
-                    "y",
-                    "confirm",
-                    "confirmed"
-                }:
-
-                    response = confirm_pending_action(
-                        self.pending_action
-                    )
-
-                    self.pending_action = None
-
-                elif answer in {
-                    "no",
-                    "n",
-                    "cancel",
-                    "cancelled"
-                }:
-
-                    response = "Action cancelled."
-
-                    self.pending_action = None
-
-                else:
-
-                    response = (
-                        "Please answer yes or no."
-                    )
-
-            else:
-
-                response, new_pending_action = run_jarvis(
-                    user_input
-                )
-
-                self.pending_action = (
-                    new_pending_action
-                )
-
-            self.after(
-                0,
-                lambda: self.finish_voice_response(
-                    response
-                )
-            )
-
-        except Exception as error:
-
-            self.after(
-                0,
-                lambda: self.finish_voice_response(
-                    f"Voice error: {error}"
-                )
-            )
-
-    # =========================
-    # FINISH VOICE RESPONSE
-    # =========================
-
-    def finish_voice_response(
-        self,
-        response
-    ):
-
-        self.add_message(
-            "JARVIS",
-            response
-        )
-
-        try:
-
-            text_to_speak = response
-
-            if len(text_to_speak) > 250:
-
-                text_to_speak = (
-                    text_to_speak[:250]
-                )
-
-                last_stop = max(
-                    text_to_speak.rfind("."),
-                    text_to_speak.rfind("!"),
-                    text_to_speak.rfind("?")
-                )
-
-                if last_stop > 80:
-
-                    text_to_speak = (
-                        text_to_speak[
-                            :last_stop + 1
-                        ]
-                    )
-
-            speak(
-                text_to_speak
+            self.orb.create_text(
+                center_x,
+                center_y,
+                text="J",
+                fill="#00ffcc",
+                font=("Arial", 28, "bold")
             )
 
         except Exception:
 
             pass
 
-        self.set_busy(
-            False
+        self.app.after(
+            100,
+            self.animate_orb
         )
 
+    # =========================================================
+    # RUN
+    # =========================================================
 
-# =========================
-# LAUNCH GUI
-# =========================
+    def run(self):
+
+        self.app.mainloop()
+
+
+# =============================================================
+# LAUNCH
+# =============================================================
 
 def launch_gui():
 
     app = JarvisGUI()
 
-    app.mainloop()
+    app.run()
 
-
-# =========================
-# DIRECT RUN
-# =========================
 
 if __name__ == "__main__":
 

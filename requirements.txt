@@ -7,3 +7,4 @@ chromadb>=0.5
 requests>=2.31
 sounddevice>=0.4
 soundfile>=0.12
+groq
